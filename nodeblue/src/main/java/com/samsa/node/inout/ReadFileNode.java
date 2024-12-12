@@ -1,4 +1,4 @@
-package com.samsa.nodes;
+package com.samsa.node.inout;
 
 import com.samsa.core.InOutNode;
 import com.samsa.core.Message;

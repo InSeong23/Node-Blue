@@ -1,4 +1,4 @@
-package com.samsa.nodes;
+package com.samsa.node.inout;
 
 import com.samsa.core.InOutNode;
 import com.samsa.core.Message;
@@ -33,12 +33,10 @@ public class WriteFileNode extends InOutNode {
     @Override
     public void onMessage(Message message) {
         try {
-            // Convert payload to string, handling different payload types
             String content = message.getPayload() != null ? message.getPayload().toString() : "";
 
             Path path = Paths.get(filePath);
 
-            // 파일 존재 여부에 따라 자동으로 모드 결정
             StandardOpenOption[] options = Files.exists(path)
                     ? new StandardOpenOption[] {
                             StandardOpenOption.APPEND,
@@ -49,17 +47,14 @@ public class WriteFileNode extends InOutNode {
                             StandardOpenOption.WRITE
                     };
 
-            // Write content to file with automatically determined mode
             Files.writeString(path, content, encoding, options);
 
             log.info("Successfully wrote to file: {} (Mode: {})",
                     filePath,
                     options[0] == StandardOpenOption.APPEND ? "Append" : "Create");
 
-            // Pass the message along to next nodes if needed
             emit(message);
         } catch (IOException e) {
-            // Handle any file writing errors
             handleError(e);
             log.error("Error writing to file: {} with encoding: {}", filePath, encoding.name(), e);
         }
