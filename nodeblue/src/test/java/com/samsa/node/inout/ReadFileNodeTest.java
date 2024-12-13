@@ -3,68 +3,133 @@ package com.samsa.node.inout;
 import com.samsa.core.Message;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 class ReadFileNodeTest {
 
     private ReadFileNode readFileNode;
     private final String testFilePath = "test_read_file.txt";
 
+    @TempDir
+    Path tempDir;
+
     @BeforeEach
     void setUp() throws IOException {
-        // 테스트 파일 생성
-        Files.writeString(Path.of(testFilePath), "Test content", StandardCharsets.UTF_8);
+        // Create test file
+        Files.writeString(Paths.get(testFilePath), "Test content", StandardCharsets.UTF_8);
 
-        // UUID 형식의 id 사용
+        // Use UUID format for id
         String uuid = UUID.randomUUID().toString();
         readFileNode = new ReadFileNode(uuid, testFilePath);
     }
 
     @Test
-    void testOnMessage_Success() throws IOException {
-        // Mock 메시지
-        Message mockMessage = mock(Message.class);
+    void testOnMessage_Success() {
+        // Mock message
+        Message mockMessage = new Message("Initial", Map.of());
 
-        // 스파이를 사용해 ReadFileNode 감싸기
-        ReadFileNode spyNode = spy(readFileNode);
+        // Execute and verify output message
+        ReadFileNode spyNode = new ReadFileNode(
+                UUID.randomUUID().toString(),
+                testFilePath) {
+            @Override
+            public void emit(Message message) {
+                try {
+                    assertEquals("Test content", message.getPayload());
+                    assertEquals(testFilePath, message.getMetadata().get("source_file"));
 
-        // 출력 메시지에 대한 검증
-        doAnswer(invocation -> {
-            Message message = invocation.getArgument(0);
-            assertEquals("Test content", message.getPayload());
-            assertEquals(testFilePath, message.getMetadata().get("source_file"));
-            assertEquals(Files.size(Path.of(testFilePath)), message.getMetadata().get("file_size"));
-            assertEquals(StandardCharsets.UTF_8.name(), message.getMetadata().get("file_encoding"));
-            return null;
-        }).when(spyNode).emit(any(Message.class));
+                    // Safely get file size with exception handling
+                    long expectedFileSize = Files.size(Paths.get(testFilePath));
+                    assertEquals(expectedFileSize, message.getMetadata().get("file_size"));
 
-        // 실행
+                    assertEquals(StandardCharsets.UTF_8.name(), message.getMetadata().get("file_encoding"));
+                    assertNotNull(message.getMetadata().get("last_modified"));
+                } catch (IOException e) {
+                    fail("Unexpected IOException: " + e.getMessage());
+                }
+            }
+        };
+
         spyNode.onMessage(mockMessage);
     }
 
     @Test
     void testOnMessage_FileNotFound() {
-        // Mock 메시지
-        Message mockMessage = mock(Message.class);
+        // Create a non-existent file path
+        String nonexistentFile = "nonexistent_file.txt";
 
-        // UUID 형식의 id 사용
+        // Use UUID format for id
         String uuid = UUID.randomUUID().toString();
 
-        // 존재하지 않는 파일 경로로 ReadFileNode 생성
-        ReadFileNode invalidNode = new ReadFileNode(uuid, "nonexistent_file.txt");
+        // Create ReadFileNode with non-existent file
+        ReadFileNode invalidNode = new ReadFileNode(uuid, nonexistentFile);
 
-        // 실행 및 예외 검증
+        // Mock message
+        Message mockMessage = new Message("Initial", Map.of());
+
+        // Verify IOException is thrown
         assertThrows(IOException.class, () -> invalidNode.onMessage(mockMessage));
+    }
+
+    @Test
+    void testOnMessage_InvalidPath() {
+        // Verify that null or empty path throws an exception
+        assertThrows(IllegalArgumentException.class, () -> new ReadFileNode(UUID.randomUUID().toString(), null));
+
+        assertThrows(IllegalArgumentException.class, () -> new ReadFileNode(UUID.randomUUID().toString(), ""));
+    }
+
+    @Test
+    void testOnMessage_UnreadableFile() throws IOException {
+        // Create a file and make it unreadable
+        Path unreadableFile = tempDir.resolve("unreadable_file.txt");
+        Files.writeString(unreadableFile, "Unreadable content");
+
+        // Remove read permissions
+        unreadableFile.toFile().setReadable(false);
+
+        // Create ReadFileNode with unreadable file
+        ReadFileNode unreadableNode = new ReadFileNode(
+                UUID.randomUUID().toString(),
+                unreadableFile.toString());
+
+        // Mock message
+        Message mockMessage = new Message("Initial", Map.of());
+
+        // Verify IOException is thrown
+        assertThrows(IOException.class, () -> unreadableNode.onMessage(mockMessage));
+    }
+
+    @Test
+    void testOnMessage_LargeFile() throws IOException {
+        // Create a large test file
+        Path largeFile = tempDir.resolve("large_file.txt");
+        StringBuilder largeContent = new StringBuilder();
+        for (int i = 0; i < 100_000; i++) {
+            largeContent.append("Large file content line ").append(i).append("\n");
+        }
+
+        Files.writeString(largeFile, largeContent.toString());
+
+        // Create ReadFileNode with large file
+        ReadFileNode largeFileNode = new ReadFileNode(
+                UUID.randomUUID().toString(),
+                largeFile.toString());
+
+        // Mock message
+        Message mockMessage = new Message("Initial", Map.of());
+
+        // Execute and verify
+        largeFileNode.onMessage(mockMessage);
     }
 }

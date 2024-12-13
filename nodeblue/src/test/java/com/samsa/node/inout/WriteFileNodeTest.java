@@ -3,69 +3,121 @@ package com.samsa.node.inout;
 import com.samsa.core.Message;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 class WriteFileNodeTest {
 
     private WriteFileNode writeFileNode;
     private final String testFilePath = "test_write_file.txt";
 
+    @TempDir
+    Path tempDir;
+
     @BeforeEach
     void setUp() throws IOException {
-        // 테스트 환경 초기화
-        Files.deleteIfExists(Path.of(testFilePath));
-        writeFileNode = new WriteFileNode("writeNode1", testFilePath);
+        // Generate a valid UUID for the node ID
+        UUID nodeId = UUID.randomUUID();
+
+        // Clean up any existing test file
+        Path fullPath = Paths.get(testFilePath);
+        if (Files.exists(fullPath)) {
+            Files.delete(fullPath);
+        }
+        writeFileNode = new WriteFileNode(nodeId.toString(), testFilePath);
     }
 
     @Test
     void testOnMessage_Success() throws IOException {
-        // Mock 메시지
+        // Mock message
         Message mockMessage = new Message("Test content", Map.of());
 
-        // 실행
+        // Execute
         writeFileNode.onMessage(mockMessage);
 
-        // 파일 내용 검증
-        String fileContent = Files.readString(Path.of(testFilePath), StandardCharsets.UTF_8);
+        // Verify file content
+        String fileContent = Files.readString(Paths.get(testFilePath), StandardCharsets.UTF_8);
         assertEquals("Test content", fileContent);
     }
 
     @Test
     void testOnMessage_Append() throws IOException {
-        // 기존 파일에 내용 작성
-        Files.writeString(Path.of(testFilePath), "Existing content\n", StandardCharsets.UTF_8);
+        // Write initial content to the file
+        Files.writeString(Paths.get(testFilePath), "Existing content\n", StandardCharsets.UTF_8);
 
-        // Mock 메시지
+        // Mock message
         Message mockMessage = new Message("New content", Map.of());
 
-        // 실행
+        // Execute
         writeFileNode.onMessage(mockMessage);
 
-        // 파일 내용 검증
-        String fileContent = Files.readString(Path.of(testFilePath), StandardCharsets.UTF_8);
+        // Verify file content
+        String fileContent = Files.readString(Paths.get(testFilePath), StandardCharsets.UTF_8);
         assertEquals("Existing content\nNew content", fileContent);
     }
 
     @Test
-    void testOnMessage_ErrorHandling() {
-        // Mock 메시지
+    void testOnMessage_NullPayload() throws IOException {
+        // Mock message with null payload
+        Message mockMessage = new Message(null, Map.of());
+
+        // Execute
+        writeFileNode.onMessage(mockMessage);
+
+        // Verify empty file content
+        String fileContent = Files.readString(Paths.get(testFilePath), StandardCharsets.UTF_8);
+        assertEquals("", fileContent);
+    }
+
+    @Test
+    void testOnMessage_InvalidPath() {
+        // Attempt to create a node with an invalid file path
+        assertThrows(IllegalArgumentException.class, () -> new WriteFileNode(UUID.randomUUID().toString(), null));
+    }
+
+    @Test
+    void testOnMessage_WriteToProtectedDirectory() {
+        // Attempt to write to a protected directory (should throw an exception)
+        WriteFileNode protectedNode = new WriteFileNode(
+                UUID.randomUUID().toString(),
+                "/root/impossible_file.txt");
+
         Message mockMessage = new Message("Test content", Map.of());
 
-        // 쓰기 불가능한 경로로 WriteFileNode 생성
-        WriteFileNode invalidNode = new WriteFileNode("writeNode2", "/invalid_path/test.txt");
+        // Verify that an IOException is thrown when trying to write to a protected
+        // directory
+        assertThrows(IOException.class, () -> protectedNode.onMessage(mockMessage));
+    }
 
-        // 실행 및 예외 검증
-        assertThrows(Exception.class, () -> invalidNode.onMessage(mockMessage));
+    @Test
+    void testOnMessage_CreateDirectoryIfNotExists() throws IOException {
+        // Create a path in a non-existent directory
+        Path newDir = tempDir.resolve("new_subdirectory");
+        Path filePath = newDir.resolve("test_file.txt");
+
+        // Create WriteFileNode with the new file path
+        WriteFileNode directoryCreatingNode = new WriteFileNode(
+                UUID.randomUUID().toString(),
+                filePath.toString());
+
+        // Mock message
+        Message mockMessage = new Message("Test content in new directory", Map.of());
+
+        // Execute
+        directoryCreatingNode.onMessage(mockMessage);
+
+        // Verify file was created
+        assertTrue(Files.exists(filePath));
+        assertEquals("Test content in new directory",
+                Files.readString(filePath, StandardCharsets.UTF_8));
     }
 }

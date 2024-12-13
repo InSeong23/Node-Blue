@@ -6,7 +6,11 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -66,6 +70,9 @@ public class WriteFileNode extends InOutNode {
     @Override
     public void onMessage(Message message) {
         try {
+            // 입력 유효성 검사
+            validateInputs();
+
             // 메시지 페이로드를 문자열로 변환
             String content = message.getPayload() != null
                     ? message.getPayload().toString()
@@ -74,16 +81,11 @@ public class WriteFileNode extends InOutNode {
             // 파일 경로 생성
             Path path = Paths.get(filePath);
 
+            // 디렉토리 존재 여부 확인 및 생성
+            ensureDirectoryExists(path);
+
             // 파일 존재 여부에 따라 쓰기 옵션 결정
-            StandardOpenOption[] options = Files.exists(path)
-                    ? new StandardOpenOption[] {
-                            StandardOpenOption.APPEND,
-                            StandardOpenOption.WRITE
-                    }
-                    : new StandardOpenOption[] {
-                            StandardOpenOption.CREATE_NEW,
-                            StandardOpenOption.WRITE
-                    };
+            StandardOpenOption[] options = determineWriteOptions(path);
 
             // 파일에 내용 작성
             Files.writeString(path, content, encoding, options);
@@ -95,10 +97,75 @@ public class WriteFileNode extends InOutNode {
 
             // 메시지를 다음 노드로 전달
             emit(message);
+        } catch (InvalidPathException e) {
+            handlePathError(e);
+        } catch (NoSuchFileException e) {
+            handleNoSuchFileError(e);
+        } catch (FileAlreadyExistsException e) {
+            handleFileExistsError(e);
+        } catch (AccessDeniedException e) {
+            handleAccessDeniedError(e);
         } catch (IOException e) {
-            // 파일 작성 중 오류 처리
-            handleError(e);
-            log.error("Error writing to file: {} with encoding: {}", filePath, encoding.name(), e);
+            handleIOError(e);
         }
+    }
+
+    private void validateInputs() {
+        if (filePath == null || filePath.trim().isEmpty()) {
+            throw new IllegalArgumentException("File path cannot be null or empty");
+        }
+        if (encoding == null) {
+            throw new IllegalArgumentException("Character encoding cannot be null");
+        }
+    }
+
+    private void ensureDirectoryExists(Path path) throws IOException {
+        Path parentDir = path.getParent();
+        if (parentDir != null && !Files.exists(parentDir)) {
+            try {
+                Files.createDirectories(parentDir);
+                log.info("Created directory: {}", parentDir);
+            } catch (IOException e) {
+                log.error("Failed to create directory: {}", parentDir, e);
+                throw e;
+            }
+        }
+    }
+
+    private StandardOpenOption[] determineWriteOptions(Path path) throws IOException {
+        return Files.exists(path)
+                ? new StandardOpenOption[] {
+                        StandardOpenOption.APPEND,
+                        StandardOpenOption.WRITE
+                }
+                : new StandardOpenOption[] {
+                        StandardOpenOption.CREATE_NEW,
+                        StandardOpenOption.WRITE
+                };
+    }
+
+    private void handlePathError(InvalidPathException e) {
+        log.error("Invalid file path: {}", filePath, e);
+        handleError(new IOException("Invalid file path", e));
+    }
+
+    private void handleNoSuchFileError(NoSuchFileException e) {
+        log.error("File not found: {}", filePath, e);
+        handleError(new IOException("File not found", e));
+    }
+
+    private void handleFileExistsError(FileAlreadyExistsException e) {
+        log.error("File already exists and cannot be created: {}", filePath, e);
+        handleError(new IOException("File already exists", e));
+    }
+
+    private void handleAccessDeniedError(AccessDeniedException e) {
+        log.error("Access denied when writing to file: {}", filePath, e);
+        handleError(new IOException("Access denied", e));
+    }
+
+    private void handleIOError(IOException e) {
+        log.error("I/O error occurred while writing to file: {}", filePath, e);
+        handleError(e);
     }
 }

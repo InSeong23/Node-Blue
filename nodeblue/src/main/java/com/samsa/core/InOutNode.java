@@ -1,5 +1,6 @@
 package com.samsa.core;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -14,17 +15,15 @@ public abstract class InOutNode extends Node {
     private final List<Pipe> inputPipes = new ArrayList<>();
     /** 출력 파이프들의 리스트 */
     private final List<Pipe> outputPipes = new ArrayList<>();
-    
 
     public InOutNode() {
         super();
     }
-    
 
     public InOutNode(UUID id) {
         super(id);
     }
-    
+
     public InOutNode(String uuid) {
         super(uuid);
     }
@@ -33,8 +32,9 @@ public abstract class InOutNode extends Node {
      * 메시지를 모든 출력 파이프로 전송합니다.
      *
      * @param message 전송할 메시지 객체
+     * @throws IOException
      */
-    public void emit(Message message) {
+    public void emit(Message message) throws IOException {
         for (Pipe pipe : getOutputPipes()) {
             if (pipe.isConnected()) {
                 pipe.send(message);
@@ -65,6 +65,5 @@ public abstract class InOutNode extends Node {
     protected List<Pipe> getOutputPipes() {
         return Collections.unmodifiableList(outputPipes);
     }
-
 
 }
