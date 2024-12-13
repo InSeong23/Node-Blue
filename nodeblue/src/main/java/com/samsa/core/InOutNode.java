@@ -1,15 +1,19 @@
 package com.samsa.core;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 입력을 받아서 처리하고 출력을 생성하는 노드의 추상 클래스입니다.
  * 입력과 출력 파이프를 모두 가질 수 있으며, 메시지를 변환하거나 처리할 수 있습니다.
+ * 
+ * @author samsa
+ * @since 1.0
  */
+@Slf4j
 public abstract class InOutNode extends Node {
     /** 입력 파이프들의 리스트 */
     private final List<Pipe> inputPipes = new ArrayList<>();
@@ -32,9 +36,8 @@ public abstract class InOutNode extends Node {
      * 메시지를 모든 출력 파이프로 전송합니다.
      *
      * @param message 전송할 메시지 객체
-     * @throws IOException
      */
-    public void emit(Message message) throws IOException {
+    public void emit(Message message) {
         for (Pipe pipe : getOutputPipes()) {
             if (pipe.isConnected()) {
                 pipe.send(message);
