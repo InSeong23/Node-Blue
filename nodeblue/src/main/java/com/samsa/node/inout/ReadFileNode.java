@@ -1,156 +1,94 @@
 package com.samsa.node.inout;
 
-import com.samsa.core.InOutNode;
-import com.samsa.core.Message;
-import lombok.extern.slf4j.Slf4j;
+import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AccessDeniedException;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.UUID;
+
+import com.samsa.core.InOutNode;
+import com.samsa.core.InPort;
+import com.samsa.core.Message;
+import com.samsa.core.OutPort;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
- * 파일을 읽어 메시지로 변환하는 노드 클래스
- * 지정된 파일 경로에서 파일을 읽고 내용을 메시지 페이로드로 변환
+ * 파일에서 내용을 읽어 메시지로 변환하는 노드입니다.
+ * 지정된 파일 경로, 인코딩을 사용하여 파일을 읽고 각 라인을 별도의 메시지로 전송합니다.
+ * 
+ * @author samsa
+ * @since 1.0
  */
 @Slf4j
 public class ReadFileNode extends InOutNode {
+
     /** 읽을 파일의 경로 */
     private final String filePath;
 
     /** 파일 읽기에 사용할 문자 인코딩 */
-    private final Charset encoding;
+    private final Charset charset;
 
     /**
-     * 기본 UTF-8 인코딩으로 ReadFileNode 생성자
+     * 기본 생성자. UTF-8 인코딩을 사용하여 파일을 읽습니다.
      * 
-     * @param id       노드의 고유 식별자
+     * @param inPort  입력 포트
+     * @param outPort 출력 포트
      * @param filePath 읽을 파일의 경로
+     * @throws IllegalArgumentException 파일 경로가 null이거나 비어있는 경우
      */
-    public ReadFileNode(String id, String filePath) {
-        this(id, filePath, StandardCharsets.UTF_8);
+    public ReadFileNode(InPort inPort, OutPort outPort, String filePath) {
+        this(inPort, outPort, filePath, StandardCharsets.UTF_8);
     }
 
     /**
-     * 문자열 인코딩 이름으로 ReadFileNode 생성자
+     * 파일 경로와 인코딩을 지정하는 생성자.
      * 
-     * @param id           노드의 고유 식별자
-     * @param filePath     읽을 파일의 경로
-     * @param encodingName 파일 읽기에 사용할 문자 인코딩 이름
-     */
-    public ReadFileNode(String id, String filePath, String encodingName) {
-        this(id, filePath, Charset.forName(encodingName));
-    }
-
-    /**
-     * Charset 객체로 ReadFileNode 생성자
-     * 
-     * @param id       노드의 고유 식별자
+     * @param inPort  입력 포트
+     * @param outPort 출력 포트
      * @param filePath 읽을 파일의 경로
-     * @param encoding 파일 읽기에 사용할 문자 인코딩
+     * @param charset 파일 읽기에 사용할 문자 인코딩
+     * @throws IllegalArgumentException 파일 경로가 null이거나 비어있는 경우, 인코딩이 null인 경우
      */
-    public ReadFileNode(String id, String filePath, Charset encoding) {
-        super(id);
+    public ReadFileNode(InPort inPort, OutPort outPort, String filePath, Charset charset) {
+        super(inPort, outPort);
+        
+        if (filePath == null || filePath.trim().isEmpty()) {
+            log.error("파일 경로가 유효하지 않습니다");
+            throw new IllegalArgumentException("파일 경로는 비어있을 수 없습니다");
+        }
+        
+        if (charset == null) {
+            log.error("문자 인코딩이 null입니다");
+            throw new IllegalArgumentException("문자 인코딩은 null일 수 없습니다");
+        }
+        
         this.filePath = filePath;
-        this.encoding = encoding;
+        this.charset = charset;
     }
 
     /**
-     * 입력 메시지에 대응하여 파일을 읽고 새 메시지 생성
-     * 파일 내용을 페이로드로, 파일 정보를 메타데이터로 포함
+     * 노드의 메시지 처리 로직을 구현합니다.
+     * 입력된 메시지에 관계없이 파일을 읽어 각 라인을 별도의 메시지로 전송합니다.
      * 
-     * @param message 입력 메시지 (사용되지 않음)
+     * @param message 입력 메시지 (실제로는 사용되지 않음)
      */
     @Override
     public void onMessage(Message message) {
-        try {
-            // 입력 유효성 검사
-            validateInputs();
-
-            // 파일 존재 여부 확인
-            validateFileExists();
-
-            // 파일 읽기 권한 확인
-            validateFileReadable();
-
-            // 파일 내용을 지정된 인코딩으로 읽기
-            String fileContent = Files.readString(Paths.get(filePath), encoding);
-
-            // 파일 정보를 메타데이터로 생성
-            Map<String, Object> metadata = createFileMetadata();
-
-            // 새 메시지 생성 및 출력 파이프로 전달
-            Message outputMessage = new Message(fileContent, metadata);
-            emit(outputMessage);
-
-            log.info("Successfully read file: {} with encoding: {}", filePath, encoding.name());
-        } catch (InvalidPathException e) {
-            handlePathError(e);
-        } catch (NoSuchFileException e) {
-            handleNoSuchFileError(e);
-        } catch (AccessDeniedException e) {
-            handleAccessDeniedError(e);
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(filePath), charset))) {
+            
+            String line;
+            while ((line = reader.readLine()) != null) {
+                // 각 라인을 별도의 메시지로 전송
+                Message lineMessage = new Message(line);
+                emit(lineMessage);
+            }
         } catch (IOException e) {
-            handleIOError(e);
+            log.error("파일 읽기 중 오류 발생. 파일: {}", filePath, e);
+            handleError(e);
         }
-    }
-
-    private void validateInputs() {
-        if (filePath == null || filePath.trim().isEmpty()) {
-            throw new IllegalArgumentException("File path cannot be null or empty");
-        }
-        if (encoding == null) {
-            throw new IllegalArgumentException("Character encoding cannot be null");
-        }
-    }
-
-    private void validateFileExists() throws NoSuchFileException {
-        Path path = Paths.get(filePath);
-        if (!Files.exists(path)) {
-            throw new NoSuchFileException("File does not exist: " + filePath);
-        }
-    }
-
-    private void validateFileReadable() throws AccessDeniedException {
-        Path path = Paths.get(filePath);
-        if (!Files.isReadable(path)) {
-            throw new AccessDeniedException("File is not readable: " + filePath);
-        }
-    }
-
-    private Map<String, Object> createFileMetadata() throws IOException {
-        Path path = Paths.get(filePath);
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("source_file", filePath);
-        metadata.put("file_size", Files.size(path));
-        metadata.put("file_encoding", encoding.name());
-        metadata.put("last_modified", Files.getLastModifiedTime(path).toMillis());
-        return metadata;
-    }
-
-    private void handlePathError(InvalidPathException e) {
-        log.error("Invalid file path: {}", filePath, e);
-        handleError(new IOException("Invalid file path", e));
-    }
-
-    private void handleNoSuchFileError(NoSuchFileException e) {
-        log.error("File not found: {}", filePath, e);
-        handleError(new IOException("File not found", e));
-    }
-
-    private void handleAccessDeniedError(AccessDeniedException e) {
-        log.error("Access denied when reading file: {}", filePath, e);
-        handleError(new IOException("Access denied", e));
-    }
-
-    private void handleIOError(IOException e) {
-        log.error("I/O error occurred while reading file: {}", filePath, e);
-        handleError(e);
     }
 }
