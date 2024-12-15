@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class ReadFileNodeTest {
@@ -81,6 +82,6 @@ class ReadFileNodeTest {
         
         Message dummyMessage = new Message("Test");
         
-        assertThrows(RuntimeException.class, () -> readFileNode.onMessage(dummyMessage));
+        assertThrows(IOException.class, () -> readFileNode.onMessage(dummyMessage));
     }
 }

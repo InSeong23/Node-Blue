@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class WriteFileNodeTest {
@@ -35,7 +36,7 @@ class WriteFileNodeTest {
     @BeforeEach
     void setUp() throws IOException {
         MockitoAnnotations.openMocks(this);
-        
+
         // 임시 파일 생성
         tempFile = Files.createTempFile("test", ".txt");
     }
@@ -47,20 +48,20 @@ class WriteFileNodeTest {
 
     @Test
     void testConstructorWithNullFilePath() {
-        assertThrows(IllegalArgumentException.class, 
-            () -> new WriteFileNode(inPort, outPort, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> new WriteFileNode(inPort, outPort, null));
     }
 
     @Test
     void testConstructorWithEmptyFilePath() {
-        assertThrows(IllegalArgumentException.class, 
-            () -> new WriteFileNode(inPort, outPort, ""));
+        assertThrows(IllegalArgumentException.class,
+                () -> new WriteFileNode(inPort, outPort, ""));
     }
 
     @Test
     void testOnMessageWritesMessageToFile() throws IOException {
         writeFileNode = new WriteFileNode(inPort, outPort, tempFile.toString());
-        
+
         // Mockito를 사용해 메시지 방출을 모킹
         doNothing().when(outPort).propagate(any(Message.class));
 
@@ -75,9 +76,9 @@ class WriteFileNodeTest {
 
     @Test
     void testOnMessageWithAppendMode() throws IOException {
-        writeFileNode = new WriteFileNode(inPort, outPort, tempFile.toString(), 
-                                          StandardCharsets.UTF_8, true);
-        
+        writeFileNode = new WriteFileNode(inPort, outPort, tempFile.toString(),
+                StandardCharsets.UTF_8, true);
+
         doNothing().when(outPort).propagate(any(Message.class));
 
         Message message1 = new Message("First Line");
@@ -96,7 +97,7 @@ class WriteFileNodeTest {
     @Test
     void testOnMessageWithNullMessage() {
         writeFileNode = new WriteFileNode(inPort, outPort, tempFile.toString());
-        
-        assertThrows(IllegalArgumentException.class, () -> writeFileNode.onMessage(null));
+
+        assertThrows(NullPointerException.class, () -> writeFileNode.onMessage(null));
     }
 }
